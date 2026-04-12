@@ -273,10 +273,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <h1 className="text-4xl font-bold text-slate-900 mb-2">Pulpit Nawigacyjny Travel CRM</h1>
           <p className="text-slate-600">Przeglad leadow i statystyk sprzedazy</p>
         </div>
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-semibold text-amber-800">Test deploya: ta wersja zostala wypchnieta na main.</p>
-        </div>
-
         {canViewAgencySummary && (
           <div className="mb-6 inline-flex rounded-xl border border-slate-200 bg-white p-1 gap-1">
             <button
