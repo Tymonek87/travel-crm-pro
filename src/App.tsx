@@ -20,11 +20,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { DropResult } from '@hello-pangea/dnd';
 import { cn } from './lib/utils';
 import { filterLeadsByProposalFilters } from './features/proposals/filters';
+import { getColumnsForStage, getFirstStatusForStage, JOURNEY_STAGE_LABELS } from './features/journey/stageUtils';
+import { buildTask, formatLocalDateTime, getDueDateAtHour, splitDateTime } from './features/tasks/taskFactory';
 
 type Tab = 'dashboard' | 'clients' | 'leads' | 'kanban' | 'tasks' | 'campaigns' | 'notifications' | 'reports' | 'admin' | 'architecture';
 type LeadPoolItem = Omit<Lead, 'id' | 'status' | 'activities' | 'trackingId'>;
 type ProposalsView = 'kanban' | 'table';
-type JourneyStageView = JourneyStage;
 type ReservationPoolItem = {
   customerName: string;
   reservationId: string;
@@ -51,7 +52,7 @@ export default function App() {
   const [autoTaskEditId, setAutoTaskEditId] = useState<string | null>(null);
   const [autoTaskSource, setAutoTaskSource] = useState<'lead' | 'reservation'>('lead');
   const [proposalsView, setProposalsView] = useState<ProposalsView>('kanban');
-  const [activeJourneyStage, setActiveJourneyStage] = useState<JourneyStageView>('sales');
+  const [activeJourneyStage, setActiveJourneyStage] = useState<JourneyStage>('sales');
   const [proposalDirection, setProposalDirection] = useState('');
   const [proposalMinValue, setProposalMinValue] = useState('');
   const [proposalMaxValue, setProposalMaxValue] = useState('');
@@ -107,7 +108,7 @@ export default function App() {
 
   const handleAddLead = (newLeadData: Omit<Lead, 'id' | 'status' | 'activities' | 'trackingId'>) => {
     const nowIso = formatISO(new Date());
-    const initialStatus = getFirstStatusForStage('sales');
+    const initialStatus = getFirstStatusForStage(columns, 'sales');
     const newLead: Lead = {
       ...newLeadData,
       id: `L-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
@@ -141,7 +142,7 @@ export default function App() {
 
     const now = new Date();
     const nowIso = formatISO(now);
-    const initialStatus = getFirstStatusForStage('sales');
+    const initialStatus = getFirstStatusForStage(columns, 'sales');
     const newLeadId = `L-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
     const trackingId = `trk_${Math.random().toString(36).substring(2, 8)}`;
 
@@ -164,30 +165,23 @@ export default function App() {
 
     setLeads((prev) => [newLead, ...prev]);
 
-    const due = new Date(now);
-    due.setDate(due.getDate() + 1);
-    const dueDate = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')} 10:00`;
-    const createdDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    const followUpTask: TaskReportItem = {
-      id: `T-${String(Math.random()).slice(2, 8)}`,
-      taskId: Math.floor(Math.random() * 1000000),
+    const createdDate = formatLocalDateTime(now);
+    const dueDate = getDueDateAtHour(now, 1);
+    const followUpTask = buildTask({
       title: `Kontakt z klientem: ${pickedLead.customerName}`,
-      status: 'new',
+      client: pickedLead.customerName,
       createdDate,
       dueDate,
-      priority: 'medium',
-      client: pickedLead.customerName,
-      assignedTo: 'Ja',
-    };
+    });
 
     setTasks((prev) => [followUpTask, ...prev]);
     setAutoTaskSource('lead');
     setAutoTaskEditId(followUpTask.id);
+    const taskDateTime = splitDateTime(dueDate);
     setAutoTaskForm({
       title: followUpTask.title,
-      dueDate: dueDate.split(' ')[0],
-      dueTime: dueDate.split(' ')[1] || '10:00',
+      dueDate: taskDateTime.date,
+      dueTime: taskDateTime.time,
       assignedTo: followUpTask.assignedTo,
       priority: followUpTask.priority,
       status: followUpTask.status,
@@ -207,31 +201,23 @@ export default function App() {
     setReservationPool((prev) => prev.filter((_, idx) => idx !== randomIndex));
 
     const now = new Date();
-    const due = new Date(now);
-    due.setDate(due.getDate() + 1);
-
-    const createdDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const dueDate = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')} 10:00`;
-
-    const reservationTask: TaskReportItem = {
-      id: `T-${String(Math.random()).slice(2, 8)}`,
-      taskId: Math.floor(Math.random() * 1000000),
+    const createdDate = formatLocalDateTime(now);
+    const dueDate = getDueDateAtHour(now, 1);
+    const reservationTask = buildTask({
       title: `Rezerwacja Kontakt z klientem: ${pickedReservation.customerName}`,
-      status: 'new',
+      client: pickedReservation.customerName,
       createdDate,
       dueDate,
-      priority: 'medium',
-      client: pickedReservation.customerName,
-      assignedTo: 'Ja',
-    };
+    });
 
     setTasks((prev) => [reservationTask, ...prev]);
     setAutoTaskSource('reservation');
     setAutoTaskEditId(reservationTask.id);
+    const reservationDateTime = splitDateTime(dueDate);
     setAutoTaskForm({
       title: reservationTask.title,
-      dueDate: dueDate.split(' ')[0],
-      dueTime: dueDate.split(' ')[1] || '10:00',
+      dueDate: reservationDateTime.date,
+      dueTime: reservationDateTime.time,
       assignedTo: reservationTask.assignedTo,
       priority: reservationTask.priority,
       status: reservationTask.status,
@@ -321,7 +307,7 @@ export default function App() {
         };
 
         if (currentStage === 'sales' && destinationColumn.isWon) {
-          const preTripFirstStatus = getFirstStatusForStage('pre_trip');
+          const preTripFirstStatus = getFirstStatusForStage(columns, 'pre_trip');
           if (preTripFirstStatus) {
             const departureDate = lead.departureDate || formatISO(new Date(Date.now() + 1000 * 60 * 60 * 24 * 30));
             const returnDate = lead.returnDate || formatISO(new Date(Date.now() + 1000 * 60 * 60 * 24 * 37));
@@ -345,21 +331,14 @@ export default function App() {
             };
 
             const now = new Date();
-            const due = new Date(now);
-            due.setDate(due.getDate() + 1);
-            const dueDate = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')} 10:00`;
-            const createdDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-            generatedStageTask = {
-              id: `T-${String(Math.random()).slice(2, 8)}`,
-              taskId: Math.floor(Math.random() * 1000000),
+            const createdDate = formatLocalDateTime(now);
+            const dueDate = getDueDateAtHour(now, 1);
+            generatedStageTask = buildTask({
               title: `Dosprzedaz uslug przed wyjazdem: ${lead.customerName}`,
-              status: 'new',
+              client: lead.customerName,
               createdDate,
               dueDate,
-              priority: 'medium',
-              client: lead.customerName,
-              assignedTo: 'Ja',
-            };
+            });
           }
         }
 
@@ -384,7 +363,7 @@ export default function App() {
   }, [activeTab, modulePermissions]);
 
   useEffect(() => {
-    const postTripFirstStatus = getFirstStatusForStage('post_trip');
+    const postTripFirstStatus = getFirstStatusForStage(columns, 'post_trip');
     if (!postTripFirstStatus) return;
 
     const movedLeads: Lead[] = [];
@@ -428,22 +407,16 @@ export default function App() {
     });
 
     if (movedLeads.length > 0) {
-      const due = new Date(now);
-      due.setDate(due.getDate() + 2);
-      const dueDate = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')} 10:00`;
-      const createdDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-      const followUpTasks: TaskReportItem[] = movedLeads.map((lead) => ({
-        id: `T-${String(Math.random()).slice(2, 8)}`,
-        taskId: Math.floor(Math.random() * 1000000),
-        title: `Ankieta po powrocie: ${lead.customerName}`,
-        status: 'new',
-        createdDate,
-        dueDate,
-        priority: 'medium',
-        client: lead.customerName,
-        assignedTo: 'Ja',
-      }));
+      const createdDate = formatLocalDateTime(now);
+      const dueDate = getDueDateAtHour(now, 2);
+      const followUpTasks: TaskReportItem[] = movedLeads.map((lead) =>
+        buildTask({
+          title: `Ankieta po powrocie: ${lead.customerName}`,
+          client: lead.customerName,
+          createdDate,
+          dueDate,
+        })
+      );
 
       setTasks((prev) => [...followUpTasks, ...prev]);
     }
@@ -466,18 +439,7 @@ export default function App() {
     return true;
   });
 
-  const getColumnsForStage = (stage: JourneyStage) =>
-    columns
-      .filter((column) => (column.stage || 'sales') === stage)
-      .sort((a, b) => a.order - b.order);
-
-  const getFirstStatusForStage = (stage: JourneyStage) => getColumnsForStage(stage)[0]?.id || 'New';
-  const journeyStageLabels: Record<JourneyStageView, string> = {
-    sales: 'Sprzedaz',
-    pre_trip: 'Przed wyjazdem',
-    post_trip: 'Po powrocie',
-  };
-  const stageColumns = useMemo(() => getColumnsForStage(activeJourneyStage), [columns, activeJourneyStage]);
+  const stageColumns = useMemo(() => getColumnsForStage(columns, activeJourneyStage), [columns, activeJourneyStage]);
   const stageLeads = useMemo(
     () => leads.filter((lead) => (lead.journeyStage || 'sales') === activeJourneyStage),
     [leads, activeJourneyStage]
@@ -555,7 +517,7 @@ export default function App() {
 
               {item.id === 'kanban' && activeTab === 'kanban' && !isSidebarCollapsed && (
                 <div className="ml-8 mt-1 space-y-1">
-                  {(['sales', 'pre_trip', 'post_trip'] as JourneyStageView[]).map((stage) => (
+                  {(['sales', 'pre_trip', 'post_trip'] as JourneyStage[]).map((stage) => (
                     <button
                       key={stage}
                       onClick={() => {
@@ -569,7 +531,7 @@ export default function App() {
                           : 'text-slate-600 hover:bg-slate-100'
                       )}
                     >
-                      {journeyStageLabels[stage]}
+                      {JOURNEY_STAGE_LABELS[stage]}
                     </button>
                   ))}
                 </div>
@@ -630,7 +592,7 @@ export default function App() {
                 <div className="mb-6 flex flex-col md:flex-row justify-between items-start gap-4">
                   <div>
                     <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Lejek sprzedazowy</h2>
-                    <p className="text-slate-500 mt-1">Zarzadzaj etapem: {journeyStageLabels[activeJourneyStage]}.</p>
+                    <p className="text-slate-500 mt-1">Zarzadzaj etapem: {JOURNEY_STAGE_LABELS[activeJourneyStage]}.</p>
                     <div className="mt-4 inline-flex rounded-xl border border-slate-200 bg-white p-1 gap-1">
                       <button
                         onClick={() => setProposalsView('kanban')}
@@ -773,7 +735,7 @@ export default function App() {
                           {filteredStageLeads.length === 0 && (
                             <tr>
                               <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">
-                                Brak propozycji spelniajacych aktualne filtry w etapie {journeyStageLabels[activeJourneyStage]}.
+                                Brak propozycji spelniajacych aktualne filtry w etapie {JOURNEY_STAGE_LABELS[activeJourneyStage]}.
                               </td>
                             </tr>
                           )}
