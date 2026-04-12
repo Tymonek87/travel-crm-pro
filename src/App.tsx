@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { mockLeads, mockAnalytics, defaultColumns, mockTasks, mockLeadPool } from './data/mockData';
-import { KanbanBoard } from './components/KanbanBoard';
-import { TrackingSimulator } from './components/TrackingSimulator';
 import { CodeViewer } from './components/CodeViewer';
 import { NewLeadModal } from './components/NewLeadModal';
 import { LeadDetailsModal } from './components/LeadDetailsModal';
@@ -13,7 +11,8 @@ import { TasksPanel } from './components/TasksPanel';
 import { NotificationsPanel } from './components/NotificationsPanel';
 import { LeadsPanel } from './components/LeadsPanel';
 import { CampaignsPanel } from './components/CampaignsPanel';
-import { Plane, LayoutDashboard, BarChart3, Code2, Plus, ChevronLeft, ChevronRight, Menu, FileText, Settings, Layout, Users, CheckCircle2, Bell, UserRoundSearch, Megaphone } from 'lucide-react';
+import { ProposalsPanel } from './components/ProposalsPanel';
+import { Plane, LayoutDashboard, BarChart3, Code2, ChevronLeft, ChevronRight, Menu, FileText, Settings, Layout, Users, CheckCircle2, Bell, UserRoundSearch, Megaphone } from 'lucide-react';
 import { Lead, LeadStatus, Column, TaskReportItem, JourneyStage } from './types';
 import { formatISO } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -587,163 +586,37 @@ export default function App() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.2 }}
-                className="flex-1 overflow-hidden flex flex-col p-4 sm:p-6 lg:p-8 w-full"
+                className="flex-1 overflow-hidden"
               >
-                <div className="mb-6 flex flex-col md:flex-row justify-between items-start gap-4">
-                  <div>
-                    <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Lejek sprzedazowy</h2>
-                    <p className="text-slate-500 mt-1">Zarzadzaj etapem: {JOURNEY_STAGE_LABELS[activeJourneyStage]}.</p>
-                    <div className="mt-4 inline-flex rounded-xl border border-slate-200 bg-white p-1 gap-1">
-                      <button
-                        onClick={() => setProposalsView('kanban')}
-                        className={cn(
-                          'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
-                          proposalsView === 'kanban' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-                        )}
-                      >
-                        Kanban
-                      </button>
-                      <button
-                        onClick={() => setProposalsView('table')}
-                        className={cn(
-                          'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
-                          proposalsView === 'table' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-                        )}
-                      >
-                        Tabela
-                      </button>
-                    </div>
-                    <button 
-                      onClick={handleAcquireLead}
-                      className="mt-4 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
-                    >
-                      <Plus className="w-5 h-5" />
-                      Przejmij Leada
-                    </button>
-                  </div>
-                  <TrackingSimulator leads={filteredStageLeads} onSimulateClick={handleSimulateClick} />
-                </div>
-                <div className="mb-5 p-4 bg-white border border-slate-200 rounded-xl">
-                  <div className="flex items-center justify-between mb-3 gap-3">
-                    <h3 className="text-sm font-semibold text-slate-800">Filtry propozycji</h3>
-                    <div className="text-xs text-slate-500">
-                      Wyniki: <span className="font-semibold text-slate-700">{filteredStageLeads.length}</span> / {stageLeads.length}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-                    <input
-                      type="text"
-                      value={proposalDirection}
-                      onChange={(e) => setProposalDirection(e.target.value)}
-                      placeholder="Kierunek (np. Grecja)"
-                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      value={proposalMinValue}
-                      onChange={(e) => setProposalMinValue(e.target.value)}
-                      placeholder="Min wartosc"
-                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      value={proposalMaxValue}
-                      onChange={(e) => setProposalMaxValue(e.target.value)}
-                      placeholder="Max wartosc"
-                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <div className="space-y-1">
-                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Termin wyjazdu od</label>
-                      <input
-                        type="date"
-                        value={proposalDepartureFrom}
-                        onChange={(e) => setProposalDepartureFrom(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Termin wyjazdu do</label>
-                      <input
-                        type="date"
-                        value={proposalDepartureTo}
-                        onChange={(e) => setProposalDepartureTo(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-3 flex justify-end">
-                    <button
-                      onClick={() => {
-                        setProposalDirection('');
-                        setProposalMinValue('');
-                        setProposalMaxValue('');
-                        setProposalDepartureFrom('');
-                        setProposalDepartureTo('');
-                      }}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
-                    >
-                      Wyczysc filtry
-                    </button>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  {proposalsView === 'kanban' ? (
-                    <KanbanBoard 
-                      leads={filteredStageLeads} 
-                      columns={stageColumns}
-                      onLeadClick={setSelectedLead} 
-                      onDragEnd={handleDragEnd}
-                    />
-                  ) : (
-                    <div className="h-full overflow-auto bg-white rounded-xl border border-slate-200">
-                      <table className="w-full border-collapse">
-                        <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Klient</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Kierunek</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Status</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase">Wartosc</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Ostatnia aktywnosc</th>
-                            <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase">Akcje</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200">
-                          {filteredStageLeads.map((lead) => {
-                            const statusLabel = stageColumns.find((col) => col.id === lead.status)?.title || lead.status;
-                            return (
-                              <tr key={lead.id} className="hover:bg-slate-50">
-                                <td className="px-4 py-3 text-sm font-medium text-slate-900">{lead.customerName}</td>
-                                <td className="px-4 py-3 text-sm text-slate-600">{lead.destination}</td>
-                                <td className="px-4 py-3 text-sm text-slate-600">{statusLabel}</td>
-                                <td className="px-4 py-3 text-sm text-slate-900 text-right">
-                                  {new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(lead.value)}
-                                </td>
-                                <td className="px-4 py-3 text-sm text-slate-600">{lead.lastActivityAt ? new Date(lead.lastActivityAt).toLocaleString('pl-PL') : '-'}</td>
-                                <td className="px-4 py-3 text-center">
-                                  <button
-                                    onClick={() => setSelectedLead(lead)}
-                                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
-                                  >
-                                    Szczegoly
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                          {filteredStageLeads.length === 0 && (
-                            <tr>
-                              <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">
-                                Brak propozycji spelniajacych aktualne filtry w etapie {JOURNEY_STAGE_LABELS[activeJourneyStage]}.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
+                <ProposalsPanel
+                  activeJourneyStage={activeJourneyStage}
+                  proposalsView={proposalsView}
+                  stageColumns={stageColumns}
+                  stageLeadsCount={stageLeads.length}
+                  filteredStageLeads={filteredStageLeads}
+                  proposalDirection={proposalDirection}
+                  proposalMinValue={proposalMinValue}
+                  proposalMaxValue={proposalMaxValue}
+                  proposalDepartureFrom={proposalDepartureFrom}
+                  proposalDepartureTo={proposalDepartureTo}
+                  onProposalsViewChange={setProposalsView}
+                  onProposalDirectionChange={setProposalDirection}
+                  onProposalMinValueChange={setProposalMinValue}
+                  onProposalMaxValueChange={setProposalMaxValue}
+                  onProposalDepartureFromChange={setProposalDepartureFrom}
+                  onProposalDepartureToChange={setProposalDepartureTo}
+                  onClearFilters={() => {
+                    setProposalDirection('');
+                    setProposalMinValue('');
+                    setProposalMaxValue('');
+                    setProposalDepartureFrom('');
+                    setProposalDepartureTo('');
+                  }}
+                  onAcquireLead={handleAcquireLead}
+                  onSimulateClick={handleSimulateClick}
+                  onLeadClick={setSelectedLead}
+                  onDragEnd={handleDragEnd}
+                />
               </motion.div>
             )}
 
