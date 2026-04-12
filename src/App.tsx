@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { mockLeads, mockAnalytics, defaultColumns, mockTasks, mockLeadPool } from './data/mockData';
 import { KanbanBoard } from './components/KanbanBoard';
 import { TrackingSimulator } from './components/TrackingSimulator';
@@ -19,6 +19,7 @@ import { formatISO } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DropResult } from '@hello-pangea/dnd';
 import { cn } from './lib/utils';
+import { filterLeadsByProposalFilters } from './features/proposals/filters';
 
 type Tab = 'dashboard' | 'clients' | 'leads' | 'kanban' | 'tasks' | 'campaigns' | 'notifications' | 'reports' | 'admin' | 'architecture';
 type LeadPoolItem = Omit<Lead, 'id' | 'status' | 'activities' | 'trackingId'>;
@@ -123,7 +124,7 @@ export default function App() {
       ],
       trackingId: `trk_${Math.random().toString(36).substring(2, 8)}`
     };
-    setLeads([newLead, ...leads]);
+    setLeads((prev) => [newLead, ...prev]);
   };
 
   const handleAcquireLead = () => {
@@ -476,34 +477,22 @@ export default function App() {
     pre_trip: 'Przed wyjazdem',
     post_trip: 'Po powrocie',
   };
-  const stageColumns = getColumnsForStage(activeJourneyStage);
-  const stageLeads = leads.filter((lead) => (lead.journeyStage || 'sales') === activeJourneyStage);
-  const filteredStageLeads = stageLeads.filter((lead) => {
-    const normalizedDirection = proposalDirection.trim().toLowerCase();
-    const matchesDirection =
-      normalizedDirection === '' ||
-      lead.destination.toLowerCase().includes(normalizedDirection);
-
-    const minValue = proposalMinValue.trim() === '' ? null : Number(proposalMinValue);
-    const maxValue = proposalMaxValue.trim() === '' ? null : Number(proposalMaxValue);
-    const matchesMinValue = minValue === null || (!Number.isNaN(minValue) && lead.value >= minValue);
-    const matchesMaxValue = maxValue === null || (!Number.isNaN(maxValue) && lead.value <= maxValue);
-
-    const departureFrom = proposalDepartureFrom ? new Date(`${proposalDepartureFrom}T00:00:00`) : null;
-    const departureTo = proposalDepartureTo ? new Date(`${proposalDepartureTo}T23:59:59`) : null;
-    const departureDate = lead.departureDate ? new Date(lead.departureDate) : null;
-    let matchesDeparture = true;
-    if (departureFrom || departureTo) {
-      if (!departureDate || Number.isNaN(departureDate.getTime())) {
-        matchesDeparture = false;
-      } else {
-        if (departureFrom && departureDate < departureFrom) matchesDeparture = false;
-        if (departureTo && departureDate > departureTo) matchesDeparture = false;
-      }
-    }
-
-    return matchesDirection && matchesMinValue && matchesMaxValue && matchesDeparture;
-  });
+  const stageColumns = useMemo(() => getColumnsForStage(activeJourneyStage), [columns, activeJourneyStage]);
+  const stageLeads = useMemo(
+    () => leads.filter((lead) => (lead.journeyStage || 'sales') === activeJourneyStage),
+    [leads, activeJourneyStage]
+  );
+  const filteredStageLeads = useMemo(
+    () =>
+      filterLeadsByProposalFilters(stageLeads, {
+        direction: proposalDirection,
+        minValue: proposalMinValue,
+        maxValue: proposalMaxValue,
+        departureFrom: proposalDepartureFrom,
+        departureTo: proposalDepartureTo,
+      }),
+    [stageLeads, proposalDirection, proposalMinValue, proposalMaxValue, proposalDepartureFrom, proposalDepartureTo]
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans overflow-hidden">

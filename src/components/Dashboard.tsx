@@ -42,6 +42,26 @@ interface DashboardProps {
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 type DashboardView = 'personal' | 'agency';
+type ActionLevel = 'high' | 'medium' | 'low';
+type AgentSummaryBase = {
+  agentName: string;
+  total: number;
+  completed: number;
+  inProgress: number;
+  newCount: number;
+  overdue: number;
+};
+type AgentSummaryRow = AgentSummaryBase & { completionRate: number };
+type SmartAction = {
+  id: string;
+  level: ActionLevel;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  badge: string;
+  badgeClass: string;
+  cardClass: string;
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({
   leads,
@@ -54,6 +74,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [activeView, setActiveView] = useState<DashboardView>('personal');
   const safeTasks = Array.isArray(tasks) ? tasks : [];
   const sortedColumns = [...columns].sort((a, b) => a.order - b.order);
+  const salesColumns = sortedColumns.filter((column) => (column.stage || 'sales') === 'sales');
+
+  const normalize = (value: string) => value.trim().toLowerCase();
+  const findStatusIdsByKeywords = (keywords: string[]) =>
+    new Set(
+      salesColumns
+        .filter((column) => {
+          const haystack = `${normalize(column.title)} ${normalize(column.id)}`;
+          return keywords.some((keyword) => haystack.includes(normalize(keyword)));
+        })
+        .map((column) => column.id)
+    );
 
   const parseSafeDueDate = (value: unknown): Date | null => {
     if (typeof value !== 'string' || value.trim() === '') return null;
@@ -68,9 +100,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   }, [canViewAgencySummary, activeView]);
 
+  const salesLeads = leads.filter((lead) => (lead.journeyStage || 'sales') === 'sales');
+  const wonStatusIds = new Set(
+    salesColumns.filter((column) => column.isWon).map((column) => column.id)
+  );
+  const lostStatusIds = new Set(
+    salesColumns.filter((column) => column.isLost).map((column) => column.id)
+  );
+  if (wonStatusIds.size === 0) {
+    findStatusIdsByKeywords(['won', 'wygr', 'sprzed']).forEach((id) => wonStatusIds.add(id));
+  }
+  if (lostStatusIds.size === 0) {
+    findStatusIdsByKeywords(['lost', 'przegr', 'anul']).forEach((id) => lostStatusIds.add(id));
+  }
+  const isTerminalSalesStatus = (statusId: string) => wonStatusIds.has(statusId) || lostStatusIds.has(statusId);
+
   const totalValue = leads.reduce((sum, lead) => sum + lead.value, 0);
-  const wonLeads = leads.filter((lead) => lead.status === 'Won').length;
-  const conversionRate = leads.length > 0 ? ((wonLeads / leads.length) * 100).toFixed(1) : '0.0';
+  const wonLeads = salesLeads.filter((lead) => wonStatusIds.has(lead.status)).length;
+  const conversionRate = salesLeads.length > 0 ? ((wonLeads / salesLeads.length) * 100).toFixed(1) : '0.0';
 
   const statusDistribution = sortedColumns.map((column) => ({
     name: column.title,
@@ -79,29 +126,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
     color: column.color,
   }));
 
-  const leadCountByStatus = (statusId: string) => leads.filter((lead) => lead.status === statusId).length;
-  const activePipelineCount = leads.filter((lead) => lead.status !== 'Won' && lead.status !== 'Lost').length;
-  const offerSentCount = leadCountByStatus('OfferSent');
-  const offerOpenedCount = leadCountByStatus('OfferOpened');
-  const negotiatingCount = leadCountByStatus('Negotiating');
-  const wonCount = leadCountByStatus('Won');
+  const offerSentStatusIds = findStatusIdsByKeywords(['offer sent', 'offersent', 'oferta wysl', 'wyslana']);
+  const offerOpenedStatusIds = findStatusIdsByKeywords(['offer opened', 'offeropened', 'oferta otw', 'otwarta']);
+  const negotiatingStatusIds = findStatusIdsByKeywords(['negotiating', 'negocj']);
+  const leadCountByStatusSet = (statusIds: Set<string>) => salesLeads.filter((lead) => statusIds.has(lead.status)).length;
+  const activePipelineCount = salesLeads.filter((lead) => !isTerminalSalesStatus(lead.status)).length;
+  const offerSentCount = leadCountByStatusSet(offerSentStatusIds);
+  const offerOpenedCount = leadCountByStatusSet(offerOpenedStatusIds);
+  const negotiatingCount = leadCountByStatusSet(negotiatingStatusIds);
+  const wonCount = wonLeads;
 
-  const staleOfferSentLeads = leads.filter((lead) => {
-    if (lead.status !== 'OfferSent' || !lead.offerSentAt) return false;
+  const staleOfferSentLeads = salesLeads.filter((lead) => {
+    if (!offerSentStatusIds.has(lead.status) || !lead.offerSentAt) return false;
     return differenceInHours(new Date(), parseISO(lead.offerSentAt)) >= 24;
   });
 
   const smartActions = (() => {
-    const actions: Array<{
-      id: string;
-      level: 'high' | 'medium' | 'low';
-      title: string;
-      description: string;
-      icon: React.ReactNode;
-      badge: string;
-      badgeClass: string;
-      cardClass: string;
-    }> = [];
+    const actions: SmartAction[] = [];
 
     if (activePipelineCount < 5) {
       actions.push({
@@ -174,15 +215,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
   })();
 
-  const destinationStats = leads.reduce((acc: Record<string, { count: number; value: number }>, lead) => {
+  const destinationStats: Record<string, { count: number; value: number }> = leads.reduce((acc, lead) => {
     const destination = lead.destination.split(' - ')[0];
     if (!acc[destination]) acc[destination] = { count: 0, value: 0 };
     acc[destination].count += 1;
     acc[destination].value += lead.value;
     return acc;
-  }, {});
+  }, {} as Record<string, { count: number; value: number }>);
 
-  const topDestinations = Object.entries(destinationStats)
+  const topDestinations = (Object.entries(destinationStats) as Array<[string, { count: number; value: number }]>)
     .map(([name, stats]) => ({ name, count: stats.count, value: stats.value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
@@ -198,8 +239,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(value);
 
   const now = new Date();
-  const agentSummary = Object.values(
-    safeTasks.reduce((acc, task) => {
+  const agentSummaryByName = safeTasks.reduce<Record<string, AgentSummaryBase>>((acc, task) => {
       const agentName = typeof task.assignedTo === 'string' && task.assignedTo.trim() ? task.assignedTo.trim() : 'Nieprzypisane';
       const dueDate = parseSafeDueDate(task.dueDate);
       const isOverdue = dueDate !== null && dueDate < now && task.status !== 'completed';
@@ -215,9 +255,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (isOverdue) acc[agentName].overdue += 1;
 
       return acc;
-    }, {} as Record<string, { agentName: string; total: number; completed: number; inProgress: number; newCount: number; overdue: number }>)
-  )
-    .map((agent) => ({
+    }, {});
+  const agentSummary: AgentSummaryRow[] = Object.values(agentSummaryByName)
+    .map((agent: AgentSummaryBase) => ({
       ...agent,
       completionRate: agent.total > 0 ? Math.round((agent.completed / agent.total) * 100) : 0,
     }))
@@ -234,7 +274,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
   const agencyCompletionRate = agencyTotals.tasks > 0 ? Math.round((agencyTotals.completed / agencyTotals.tasks) * 100) : 0;
 
-  const salesColumns = sortedColumns.filter((column) => (column.stage || 'sales') === 'sales');
   const proposalStages = salesColumns.map((column) => {
     const stageLeads = leads.filter((lead) => lead.status === column.id);
     const stageValue = stageLeads.reduce((sum, lead) => sum + lead.value, 0);
