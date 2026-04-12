@@ -1,17 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { mockLeads, mockAnalytics, defaultColumns, mockTasks, mockLeadPool } from './data/mockData';
-import { CodeViewer } from './components/CodeViewer';
-import { NewLeadModal } from './components/NewLeadModal';
-import { LeadDetailsModal } from './components/LeadDetailsModal';
-import { Reports } from './components/Reports';
-import { AdminPanel, ModulePermissions } from './components/AdminPanel';
-import { Dashboard } from './components/Dashboard';
-import { ClientsPanel } from './components/ClientsPanel';
-import { TasksPanel } from './components/TasksPanel';
-import { NotificationsPanel } from './components/NotificationsPanel';
-import { LeadsPanel } from './components/LeadsPanel';
-import { CampaignsPanel } from './components/CampaignsPanel';
-import { ProposalsPanel } from './components/ProposalsPanel';
+import type { ModulePermissions } from './components/AdminPanel';
 import { Plane, LayoutDashboard, BarChart3, Code2, ChevronLeft, ChevronRight, Menu, FileText, Settings, Layout, Users, CheckCircle2, Bell, UserRoundSearch, Megaphone } from 'lucide-react';
 import { Lead, LeadStatus, Column, TaskReportItem, JourneyStage } from './types';
 import { formatISO } from 'date-fns';
@@ -21,6 +10,19 @@ import { cn } from './lib/utils';
 import { filterLeadsByProposalFilters } from './features/proposals/filters';
 import { getColumnsForStage, getFirstStatusForStage, JOURNEY_STAGE_LABELS } from './features/journey/stageUtils';
 import { buildTask, formatLocalDateTime, getDueDateAtHour, splitDateTime } from './features/tasks/taskFactory';
+
+const Dashboard = lazy(() => import('./components/Dashboard').then((m) => ({ default: m.Dashboard })));
+const ProposalsPanel = lazy(() => import('./components/ProposalsPanel').then((m) => ({ default: m.ProposalsPanel })));
+const ClientsPanel = lazy(() => import('./components/ClientsPanel').then((m) => ({ default: m.ClientsPanel })));
+const LeadsPanel = lazy(() => import('./components/LeadsPanel').then((m) => ({ default: m.LeadsPanel })));
+const TasksPanel = lazy(() => import('./components/TasksPanel').then((m) => ({ default: m.TasksPanel })));
+const NotificationsPanel = lazy(() => import('./components/NotificationsPanel').then((m) => ({ default: m.NotificationsPanel })));
+const CampaignsPanel = lazy(() => import('./components/CampaignsPanel').then((m) => ({ default: m.CampaignsPanel })));
+const Reports = lazy(() => import('./components/Reports').then((m) => ({ default: m.Reports })));
+const AdminPanel = lazy(() => import('./components/AdminPanel').then((m) => ({ default: m.AdminPanel })));
+const CodeViewer = lazy(() => import('./components/CodeViewer').then((m) => ({ default: m.CodeViewer })));
+const NewLeadModal = lazy(() => import('./components/NewLeadModal').then((m) => ({ default: m.NewLeadModal })));
+const LeadDetailsModal = lazy(() => import('./components/LeadDetailsModal').then((m) => ({ default: m.LeadDetailsModal })));
 
 type Tab = 'dashboard' | 'clients' | 'leads' | 'kanban' | 'tasks' | 'campaigns' | 'notifications' | 'reports' | 'admin' | 'architecture';
 type LeadPoolItem = Omit<Lead, 'id' | 'status' | 'activities' | 'trackingId'>;
@@ -454,6 +456,9 @@ export default function App() {
       }),
     [stageLeads, proposalDirection, proposalMinValue, proposalMaxValue, proposalDepartureFrom, proposalDepartureTo]
   );
+  const panelFallback = (
+    <div className="flex-1 flex items-center justify-center text-sm text-slate-500 bg-slate-50">Ladowanie modulu...</div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans overflow-hidden">
@@ -558,6 +563,7 @@ export default function App() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <main className="flex-1 overflow-hidden flex flex-col relative">
+          <Suspense fallback={panelFallback}>
           <AnimatePresence mode="wait">
             {activeTab === 'dashboard' && (
               <motion.div 
@@ -753,19 +759,22 @@ export default function App() {
               </motion.div>
             )}
           </AnimatePresence>
+          </Suspense>
         </main>
       </div>
 
-      <NewLeadModal 
-        isOpen={isNewLeadModalOpen} 
-        onClose={() => setIsNewLeadModalOpen(false)} 
-        onAdd={handleAddLead} 
-      />
+      <Suspense fallback={null}>
+        <NewLeadModal 
+          isOpen={isNewLeadModalOpen} 
+          onClose={() => setIsNewLeadModalOpen(false)} 
+          onAdd={handleAddLead} 
+        />
 
-      <LeadDetailsModal
-        lead={selectedLead}
-        onClose={() => setSelectedLead(null)}
-      />
+        <LeadDetailsModal
+          lead={selectedLead}
+          onClose={() => setSelectedLead(null)}
+        />
+      </Suspense>
 
       {showAutoTaskModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
