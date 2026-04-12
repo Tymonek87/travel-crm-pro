@@ -1,10 +1,14 @@
 export type LeadStatus = string;
+export type JourneyStage = 'sales' | 'pre_trip' | 'post_trip';
 
 export interface Column {
   id: string;
   title: string;
   color: string;
   order: number;
+  stage?: JourneyStage;
+  isWon?: boolean;
+  isLost?: boolean;
 }
 
 export interface Activity {
@@ -21,8 +25,11 @@ export interface Lead {
   customerName: string;
   destination: string;
   value: number;
+  journeyStage?: JourneyStage;
   status: LeadStatus;
   createdAt?: string; // ISO date string
+  departureDate?: string; // ISO date string
+  returnDate?: string; // ISO date string
   offerSentAt?: string; // ISO date string
   lastActivityAt?: string; // ISO date string
   activities: Activity[];

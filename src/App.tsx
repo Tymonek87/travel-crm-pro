@@ -14,7 +14,7 @@ import { NotificationsPanel } from './components/NotificationsPanel';
 import { LeadsPanel } from './components/LeadsPanel';
 import { CampaignsPanel } from './components/CampaignsPanel';
 import { Plane, LayoutDashboard, BarChart3, Code2, Plus, ChevronLeft, ChevronRight, Menu, FileText, Settings, Layout, Users, CheckCircle2, Bell, UserRoundSearch, Megaphone } from 'lucide-react';
-import { Lead, LeadStatus, Column, TaskReportItem } from './types';
+import { Lead, LeadStatus, Column, TaskReportItem, JourneyStage } from './types';
 import { formatISO } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DropResult } from '@hello-pangea/dnd';
@@ -23,6 +23,7 @@ import { cn } from './lib/utils';
 type Tab = 'dashboard' | 'clients' | 'leads' | 'kanban' | 'tasks' | 'campaigns' | 'notifications' | 'reports' | 'admin' | 'architecture';
 type LeadPoolItem = Omit<Lead, 'id' | 'status' | 'activities' | 'trackingId'>;
 type ProposalsView = 'kanban' | 'table';
+type JourneyStageView = JourneyStage;
 type ReservationPoolItem = {
   customerName: string;
   reservationId: string;
@@ -37,7 +38,7 @@ const mockReservationPool: ReservationPoolItem[] = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
-  const [leads, setLeads] = useState<Lead[]>(mockLeads);
+  const [leads, setLeads] = useState<Lead[]>(mockLeads.map((lead) => ({ ...lead, journeyStage: lead.journeyStage || 'sales' })));
   const [tasks, setTasks] = useState<TaskReportItem[]>(mockTasks);
   const [leadPool, setLeadPool] = useState<LeadPoolItem[]>(mockLeadPool);
   const [reservationPool, setReservationPool] = useState<ReservationPoolItem[]>(mockReservationPool);
@@ -49,9 +50,16 @@ export default function App() {
   const [autoTaskEditId, setAutoTaskEditId] = useState<string | null>(null);
   const [autoTaskSource, setAutoTaskSource] = useState<'lead' | 'reservation'>('lead');
   const [proposalsView, setProposalsView] = useState<ProposalsView>('kanban');
+  const [activeJourneyStage, setActiveJourneyStage] = useState<JourneyStageView>('sales');
+  const [proposalDirection, setProposalDirection] = useState('');
+  const [proposalMinValue, setProposalMinValue] = useState('');
+  const [proposalMaxValue, setProposalMaxValue] = useState('');
+  const [proposalDepartureFrom, setProposalDepartureFrom] = useState('');
+  const [proposalDepartureTo, setProposalDepartureTo] = useState('');
   const [modulePermissions, setModulePermissions] = useState<ModulePermissions>({
     leads: true,
     campaigns: true,
+    managerDashboard: false,
   });
   const [autoTaskForm, setAutoTaskForm] = useState({
     title: '',
@@ -98,10 +106,11 @@ export default function App() {
 
   const handleAddLead = (newLeadData: Omit<Lead, 'id' | 'status' | 'activities' | 'trackingId'>) => {
     const nowIso = formatISO(new Date());
-    const initialStatus = columns.sort((a, b) => a.order - b.order)[0]?.id || 'New';
+    const initialStatus = getFirstStatusForStage('sales');
     const newLead: Lead = {
       ...newLeadData,
       id: `L-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+      journeyStage: 'sales',
       status: initialStatus,
       createdAt: nowIso,
       activities: [
@@ -131,13 +140,14 @@ export default function App() {
 
     const now = new Date();
     const nowIso = formatISO(now);
-    const initialStatus = columns.sort((a, b) => a.order - b.order)[0]?.id || 'New';
+    const initialStatus = getFirstStatusForStage('sales');
     const newLeadId = `L-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
     const trackingId = `trk_${Math.random().toString(36).substring(2, 8)}`;
 
     const newLead: Lead = {
       ...pickedLead,
       id: newLeadId,
+      journeyStage: 'sales',
       status: initialStatus,
       createdAt: nowIso,
       activities: [
@@ -267,6 +277,9 @@ export default function App() {
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
     const newStatus = destination.droppableId as LeadStatus;
+    const destinationColumn = columns.find((column) => column.id === newStatus);
+    if (!destinationColumn) return;
+    let generatedStageTask: TaskReportItem | null = null;
 
     setLeads(prevLeads => {
       const updatedLeads = [...prevLeads];
@@ -274,35 +287,90 @@ export default function App() {
 
       if (leadIndex !== -1) {
         const lead = updatedLeads[leadIndex];
+        const currentStage = lead.journeyStage || 'sales';
+        const destinationStage = destinationColumn.stage || 'sales';
+        if (currentStage !== destinationStage) {
+          return updatedLeads;
+        }
         const oldStatus = lead.status;
         const nowIso = formatISO(new Date());
+        const nextActivities = [
+          ...lead.activities,
+          {
+            id: `status_${Date.now()}`,
+            type: 'StatusChanged' as const,
+            timestamp: nowIso,
+            fromStatus: oldStatus,
+            toStatus: newStatus,
+            details: `Zmiana statusu: ${oldStatus} -> ${newStatus}`
+          },
+          {
+            id: `move_${Date.now() + 1}`,
+            type: 'NoteAdded' as const,
+            timestamp: nowIso,
+            details: `Zmiana statusu: ${oldStatus} -> ${newStatus} (Drag & Drop)`
+          }
+        ];
 
-        updatedLeads[leadIndex] = {
+        let nextLead: Lead = {
           ...lead,
           status: newStatus,
           lastActivityAt: nowIso,
-          activities: [
-            ...lead.activities,
-            {
-              id: `status_${Date.now()}`,
-              type: 'StatusChanged',
-              timestamp: nowIso,
-              fromStatus: oldStatus,
-              toStatus: newStatus,
-              details: `Zmiana statusu: ${oldStatus} -> ${newStatus}`
-            },
-            {
-              id: `move_${Date.now() + 1}`,
-              type: 'NoteAdded',
-              timestamp: nowIso,
-              details: `Zmiana statusu: ${oldStatus} -> ${newStatus} (Drag & Drop)`
-            }
-          ]
+          activities: nextActivities,
         };
+
+        if (currentStage === 'sales' && destinationColumn.isWon) {
+          const preTripFirstStatus = getFirstStatusForStage('pre_trip');
+          if (preTripFirstStatus) {
+            const departureDate = lead.departureDate || formatISO(new Date(Date.now() + 1000 * 60 * 60 * 24 * 30));
+            const returnDate = lead.returnDate || formatISO(new Date(Date.now() + 1000 * 60 * 60 * 24 * 37));
+            nextLead = {
+              ...nextLead,
+              journeyStage: 'pre_trip',
+              status: preTripFirstStatus,
+              departureDate,
+              returnDate,
+              activities: [
+                ...nextActivities,
+                {
+                  id: `stage_${Date.now() + 2}`,
+                  type: 'StatusChanged',
+                  timestamp: nowIso,
+                  fromStatus: newStatus,
+                  toStatus: preTripFirstStatus,
+                  details: 'Automatyczne przejscie do etapu przed wyjazdem po sprzedazy.',
+                },
+              ],
+            };
+
+            const now = new Date();
+            const due = new Date(now);
+            due.setDate(due.getDate() + 1);
+            const dueDate = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')} 10:00`;
+            const createdDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            generatedStageTask = {
+              id: `T-${String(Math.random()).slice(2, 8)}`,
+              taskId: Math.floor(Math.random() * 1000000),
+              title: `Dosprzedaz uslug przed wyjazdem: ${lead.customerName}`,
+              status: 'new',
+              createdDate,
+              dueDate,
+              priority: 'medium',
+              client: lead.customerName,
+              assignedTo: 'Ja',
+            };
+          }
+        }
+
+        updatedLeads[leadIndex] = nextLead;
       }
 
       return updatedLeads;
     });
+
+    if (generatedStageTask) {
+      setTasks((prev) => [generatedStageTask as TaskReportItem, ...prev]);
+    }
   };
 
   useEffect(() => {
@@ -313,6 +381,72 @@ export default function App() {
       setActiveTab('dashboard');
     }
   }, [activeTab, modulePermissions]);
+
+  useEffect(() => {
+    const postTripFirstStatus = getFirstStatusForStage('post_trip');
+    if (!postTripFirstStatus) return;
+
+    const movedLeads: Lead[] = [];
+    const now = new Date();
+    const nowIso = formatISO(now);
+
+    setLeads((prevLeads) => {
+      let hasChanges = false;
+      const updatedLeads = prevLeads.map((lead) => {
+        if ((lead.journeyStage || 'sales') !== 'pre_trip' || !lead.returnDate) {
+          return lead;
+        }
+
+        const returnDate = new Date(lead.returnDate);
+        if (Number.isNaN(returnDate.getTime()) || returnDate > now) {
+          return lead;
+        }
+
+        hasChanges = true;
+        movedLeads.push(lead);
+        return {
+          ...lead,
+          journeyStage: 'post_trip',
+          status: postTripFirstStatus,
+          lastActivityAt: nowIso,
+          activities: [
+            ...lead.activities,
+            {
+              id: `post_trip_${Date.now()}_${lead.id}`,
+              type: 'StatusChanged',
+              timestamp: nowIso,
+              fromStatus: lead.status,
+              toStatus: postTripFirstStatus,
+              details: 'Automatyczne przejscie do etapu po powrocie klienta.',
+            },
+          ],
+        };
+      });
+
+      return hasChanges ? updatedLeads : prevLeads;
+    });
+
+    if (movedLeads.length > 0) {
+      const due = new Date(now);
+      due.setDate(due.getDate() + 2);
+      const dueDate = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')} 10:00`;
+      const createdDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      const followUpTasks: TaskReportItem[] = movedLeads.map((lead) => ({
+        id: `T-${String(Math.random()).slice(2, 8)}`,
+        taskId: Math.floor(Math.random() * 1000000),
+        title: `Ankieta po powrocie: ${lead.customerName}`,
+        status: 'new',
+        createdDate,
+        dueDate,
+        priority: 'medium',
+        client: lead.customerName,
+        assignedTo: 'Ja',
+      }));
+
+      setTasks((prev) => [...followUpTasks, ...prev]);
+    }
+  }, [leads, columns]);
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Layout },
@@ -329,6 +463,46 @@ export default function App() {
     if (item.id === 'leads') return modulePermissions.leads;
     if (item.id === 'campaigns') return modulePermissions.campaigns;
     return true;
+  });
+
+  const getColumnsForStage = (stage: JourneyStage) =>
+    columns
+      .filter((column) => (column.stage || 'sales') === stage)
+      .sort((a, b) => a.order - b.order);
+
+  const getFirstStatusForStage = (stage: JourneyStage) => getColumnsForStage(stage)[0]?.id || 'New';
+  const journeyStageLabels: Record<JourneyStageView, string> = {
+    sales: 'Sprzedaz',
+    pre_trip: 'Przed wyjazdem',
+    post_trip: 'Po powrocie',
+  };
+  const stageColumns = getColumnsForStage(activeJourneyStage);
+  const stageLeads = leads.filter((lead) => (lead.journeyStage || 'sales') === activeJourneyStage);
+  const filteredStageLeads = stageLeads.filter((lead) => {
+    const normalizedDirection = proposalDirection.trim().toLowerCase();
+    const matchesDirection =
+      normalizedDirection === '' ||
+      lead.destination.toLowerCase().includes(normalizedDirection);
+
+    const minValue = proposalMinValue.trim() === '' ? null : Number(proposalMinValue);
+    const maxValue = proposalMaxValue.trim() === '' ? null : Number(proposalMaxValue);
+    const matchesMinValue = minValue === null || (!Number.isNaN(minValue) && lead.value >= minValue);
+    const matchesMaxValue = maxValue === null || (!Number.isNaN(maxValue) && lead.value <= maxValue);
+
+    const departureFrom = proposalDepartureFrom ? new Date(`${proposalDepartureFrom}T00:00:00`) : null;
+    const departureTo = proposalDepartureTo ? new Date(`${proposalDepartureTo}T23:59:59`) : null;
+    const departureDate = lead.departureDate ? new Date(lead.departureDate) : null;
+    let matchesDeparture = true;
+    if (departureFrom || departureTo) {
+      if (!departureDate || Number.isNaN(departureDate.getTime())) {
+        matchesDeparture = false;
+      } else {
+        if (departureFrom && departureDate < departureFrom) matchesDeparture = false;
+        if (departureTo && departureDate > departureTo) matchesDeparture = false;
+      }
+    }
+
+    return matchesDirection && matchesMinValue && matchesMaxValue && matchesDeparture;
   });
 
   return (
@@ -360,35 +534,58 @@ export default function App() {
         {/* Navigation */}
         <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto overflow-x-hidden">
           {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id as Tab)}
-              className={cn(
-                "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group relative",
-                activeTab === item.id 
-                  ? 'bg-blue-50 text-blue-700' 
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              )}
-            >
-              <item.icon className={cn(
-                "w-5 h-5 shrink-0 transition-colors",
-                activeTab === item.id ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
-              )} />
-              {!isSidebarCollapsed && (
-                <motion.span 
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="whitespace-nowrap"
-                >
-                  {item.label}
-                </motion.span>
-              )}
-              {isSidebarCollapsed && (
-                <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-30">
-                  {item.label}
+            <div key={item.id}>
+              <button
+                onClick={() => setActiveTab(item.id as Tab)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group relative",
+                  activeTab === item.id 
+                    ? 'bg-blue-50 text-blue-700' 
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                )}
+              >
+                <item.icon className={cn(
+                  "w-5 h-5 shrink-0 transition-colors",
+                  activeTab === item.id ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
+                )} />
+                {!isSidebarCollapsed && (
+                  <motion.span 
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="whitespace-nowrap"
+                  >
+                    {item.label}
+                  </motion.span>
+                )}
+                {isSidebarCollapsed && (
+                  <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-30">
+                    {item.label}
+                  </div>
+                )}
+              </button>
+
+              {item.id === 'kanban' && activeTab === 'kanban' && !isSidebarCollapsed && (
+                <div className="ml-8 mt-1 space-y-1">
+                  {(['sales', 'pre_trip', 'post_trip'] as JourneyStageView[]).map((stage) => (
+                    <button
+                      key={stage}
+                      onClick={() => {
+                        setActiveTab('kanban');
+                        setActiveJourneyStage(stage);
+                      }}
+                      className={cn(
+                        'w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                        activeJourneyStage === stage
+                          ? 'bg-slate-900 text-white'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      )}
+                    >
+                      {journeyStageLabels[stage]}
+                    </button>
+                  ))}
                 </div>
               )}
-            </button>
+            </div>
           ))}
         </nav>
 
@@ -424,6 +621,8 @@ export default function App() {
                 <Dashboard 
                   leads={leads} 
                   columns={columns}
+                  tasks={tasks}
+                  canViewAgencySummary={modulePermissions.managerDashboard}
                   onAcquireLeadClick={handleAcquireLead}
                   onViewKanbanClick={() => setActiveTab('kanban')}
                 />
@@ -442,7 +641,7 @@ export default function App() {
                 <div className="mb-6 flex flex-col md:flex-row justify-between items-start gap-4">
                   <div>
                     <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Lejek sprzedazowy</h2>
-                    <p className="text-slate-500 mt-1">Zarzadzaj ofertami w czasie rzeczywistym.</p>
+                    <p className="text-slate-500 mt-1">Zarzadzaj etapem: {journeyStageLabels[activeJourneyStage]}.</p>
                     <div className="mt-4 inline-flex rounded-xl border border-slate-200 bg-white p-1 gap-1">
                       <button
                         onClick={() => setProposalsView('kanban')}
@@ -471,13 +670,78 @@ export default function App() {
                       Przejmij Leada
                     </button>
                   </div>
-                  <TrackingSimulator leads={leads} onSimulateClick={handleSimulateClick} />
+                  <TrackingSimulator leads={filteredStageLeads} onSimulateClick={handleSimulateClick} />
+                </div>
+                <div className="mb-5 p-4 bg-white border border-slate-200 rounded-xl">
+                  <div className="flex items-center justify-between mb-3 gap-3">
+                    <h3 className="text-sm font-semibold text-slate-800">Filtry propozycji</h3>
+                    <div className="text-xs text-slate-500">
+                      Wyniki: <span className="font-semibold text-slate-700">{filteredStageLeads.length}</span> / {stageLeads.length}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+                    <input
+                      type="text"
+                      value={proposalDirection}
+                      onChange={(e) => setProposalDirection(e.target.value)}
+                      placeholder="Kierunek (np. Grecja)"
+                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      value={proposalMinValue}
+                      onChange={(e) => setProposalMinValue(e.target.value)}
+                      placeholder="Min wartosc"
+                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      value={proposalMaxValue}
+                      onChange={(e) => setProposalMaxValue(e.target.value)}
+                      placeholder="Max wartosc"
+                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Termin wyjazdu od</label>
+                      <input
+                        type="date"
+                        value={proposalDepartureFrom}
+                        onChange={(e) => setProposalDepartureFrom(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Termin wyjazdu do</label>
+                      <input
+                        type="date"
+                        value={proposalDepartureTo}
+                        onChange={(e) => setProposalDepartureTo(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      onClick={() => {
+                        setProposalDirection('');
+                        setProposalMinValue('');
+                        setProposalMaxValue('');
+                        setProposalDepartureFrom('');
+                        setProposalDepartureTo('');
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
+                    >
+                      Wyczysc filtry
+                    </button>
+                  </div>
                 </div>
                 <div className="flex-1 overflow-hidden">
                   {proposalsView === 'kanban' ? (
                     <KanbanBoard 
-                      leads={leads} 
-                      columns={columns}
+                      leads={filteredStageLeads} 
+                      columns={stageColumns}
                       onLeadClick={setSelectedLead} 
                       onDragEnd={handleDragEnd}
                     />
@@ -495,8 +759,8 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
-                          {leads.map((lead) => {
-                            const statusLabel = columns.find((col) => col.id === lead.status)?.title || lead.status;
+                          {filteredStageLeads.map((lead) => {
+                            const statusLabel = stageColumns.find((col) => col.id === lead.status)?.title || lead.status;
                             return (
                               <tr key={lead.id} className="hover:bg-slate-50">
                                 <td className="px-4 py-3 text-sm font-medium text-slate-900">{lead.customerName}</td>
@@ -517,6 +781,13 @@ export default function App() {
                               </tr>
                             );
                           })}
+                          {filteredStageLeads.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">
+                                Brak propozycji spelniajacych aktualne filtry w etapie {journeyStageLabels[activeJourneyStage]}.
+                              </td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>

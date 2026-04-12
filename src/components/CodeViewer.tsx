@@ -2,12 +2,16 @@ import React from 'react';
 
 const coreModelsCode = `// src/types.ts
 export type LeadStatus = string;
+export type JourneyStage = 'sales' | 'pre_trip' | 'post_trip';
 
 export interface Column {
   id: string;
   title: string;
   color: string;
   order: number;
+  stage?: JourneyStage;
+  isWon?: boolean;
+  isLost?: boolean;
 }
 
 export interface Activity {
@@ -24,7 +28,10 @@ export interface Lead {
   customerName: string;
   destination: string;
   value: number;
+  journeyStage?: JourneyStage;
   status: LeadStatus;
+  departureDate?: string;
+  returnDate?: string;
   createdAt?: string;
   offerSentAt?: string;
   lastActivityAt?: string;

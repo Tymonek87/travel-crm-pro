@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Column } from '../types';
+import { Column, JourneyStage } from '../types';
 import { Settings, Plus, GripVertical, Trash2, Save, Shield, Users, X, Edit3 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { cn } from '../lib/utils';
@@ -17,6 +17,9 @@ type StatusModalMode = 'create' | 'edit';
 interface StatusFormState {
   title: string;
   color: string;
+  stage: JourneyStage;
+  isWon: boolean;
+  isLost: boolean;
 }
 
 interface PermissionRule {
@@ -30,6 +33,7 @@ interface PermissionRule {
 export interface ModulePermissions {
   leads: boolean;
   campaigns: boolean;
+  managerDashboard: boolean;
 }
 
 const COLOR_OPTIONS = [
@@ -43,10 +47,23 @@ const COLOR_OPTIONS = [
   { label: 'Cyan', value: 'bg-cyan-50' },
 ];
 
+const JOURNEY_STAGE_OPTIONS: Array<{ value: JourneyStage; label: string }> = [
+  { value: 'sales', label: 'Sprzedaz' },
+  { value: 'pre_trip', label: 'Przed wyjazdem' },
+  { value: 'post_trip', label: 'Po powrocie' },
+];
+
+const JOURNEY_STAGE_LABELS: Record<JourneyStage, string> = {
+  sales: 'Sprzedaz',
+  pre_trip: 'Przed wyjazdem',
+  post_trip: 'Po powrocie',
+};
+
 const PERMISSION_RULES: PermissionRule[] = [
   { module: 'Leady', admin: true, manager: true, agent: true, viewer: true },
   { module: 'Kampanie', admin: true, manager: true, agent: true, viewer: true },
   { module: 'Zadania', admin: true, manager: true, agent: true, viewer: true },
+  { module: 'Dashboard agencji', admin: true, manager: true, agent: false, viewer: false },
   { module: 'Raporty', admin: true, manager: true, agent: false, viewer: true },
   { module: 'Administracja', admin: true, manager: false, agent: false, viewer: false },
   { module: 'Powiadomienia', admin: true, manager: true, agent: true, viewer: true },
@@ -70,6 +87,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [statusForm, setStatusForm] = useState<StatusFormState>({
     title: '',
     color: COLOR_OPTIONS[0].value,
+    stage: 'sales',
+    isWon: false,
+    isLost: false,
   });
 
   const statusCount = useMemo(() => localColumns.length, [localColumns]);
@@ -93,7 +113,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const openCreateStatusModal = () => {
     setStatusModalMode('create');
     setEditingStatusId(null);
-    setStatusForm({ title: '', color: COLOR_OPTIONS[0].value });
+    setStatusForm({ title: '', color: COLOR_OPTIONS[0].value, stage: 'sales', isWon: false, isLost: false });
     setShowStatusModal(true);
   };
 
@@ -103,7 +123,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     setStatusModalMode('edit');
     setEditingStatusId(id);
-    setStatusForm({ title: status.title, color: status.color });
+    setStatusForm({
+      title: status.title,
+      color: status.color,
+      stage: status.stage || 'sales',
+      isWon: !!status.isWon,
+      isLost: !!status.isLost,
+    });
     setShowStatusModal(true);
   };
 
@@ -124,11 +150,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         title: statusForm.title.trim(),
         color: statusForm.color,
         order: localColumns.length,
+        stage: statusForm.stage,
+        isWon: statusForm.isWon,
+        isLost: statusForm.isLost,
       };
       setLocalColumns((prev) => [...prev, newStatus]);
     } else if (statusModalMode === 'edit' && editingStatusId) {
       setLocalColumns((prev) =>
-        prev.map((col) => (col.id === editingStatusId ? { ...col, title: statusForm.title.trim(), color: statusForm.color } : col))
+        prev.map((col) =>
+          col.id === editingStatusId
+            ? { ...col, title: statusForm.title.trim(), color: statusForm.color, stage: statusForm.stage, isWon: statusForm.isWon, isLost: statusForm.isLost }
+            : col
+        )
       );
     }
 
@@ -249,6 +282,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="flex-1 min-w-0">
                               <div className="text-base font-semibold text-slate-800 truncate">{col.title}</div>
                               <div className="text-xs text-slate-400 font-mono mt-1">ID: {col.id}</div>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">
+                                  {JOURNEY_STAGE_LABELS[col.stage || 'sales']}
+                                </span>
+                                {col.isWon && (
+                                  <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700">
+                                    Status wygranej
+                                  </span>
+                                )}
+                                {col.isLost && (
+                                  <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700">
+                                    Status przegranej
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -312,6 +360,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     checked={localModulePermissions.campaigns}
                     onChange={(event) =>
                       setLocalModulePermissions((prev) => ({ ...prev, campaigns: event.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </label>
+                <label className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
+                  <span className="text-sm font-medium text-slate-800">Dashboard agencji (Manager)</span>
+                  <input
+                    type="checkbox"
+                    checked={localModulePermissions.managerDashboard}
+                    onChange={(event) =>
+                      setLocalModulePermissions((prev) => ({ ...prev, managerDashboard: event.target.checked }))
                     }
                     className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
@@ -404,6 +463,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Etap relacji</label>
+                <select
+                  value={statusForm.stage}
+                  onChange={(e) => setStatusForm((prev) => ({ ...prev, stage: e.target.value as JourneyStage }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                >
+                  {JOURNEY_STAGE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Kolor statusu</label>
                 <div className="grid grid-cols-4 gap-2">
                   {COLOR_OPTIONS.map((opt) => (
@@ -419,6 +493,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <p className="text-[11px] text-slate-500 mt-1 truncate">{opt.label}</p>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Rola statusu w lejku</label>
+                <div className="space-y-2">
+                  <label className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
+                    <span className="text-sm text-slate-700">To status wygranej sprzedazy</span>
+                    <input
+                      type="checkbox"
+                      checked={statusForm.isWon}
+                      onChange={(e) =>
+                        setStatusForm((prev) => ({
+                          ...prev,
+                          isWon: e.target.checked,
+                          isLost: e.target.checked ? false : prev.isLost,
+                        }))
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
+                    <span className="text-sm text-slate-700">To status przegranej sprzedazy</span>
+                    <input
+                      type="checkbox"
+                      checked={statusForm.isLost}
+                      onChange={(e) =>
+                        setStatusForm((prev) => ({
+                          ...prev,
+                          isLost: e.target.checked,
+                          isWon: e.target.checked ? false : prev.isWon,
+                        }))
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+                    />
+                  </label>
                 </div>
               </div>
             </div>
